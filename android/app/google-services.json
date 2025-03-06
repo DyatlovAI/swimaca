@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "661660879690",
+    "project_id": "swimac-4793e",
+    "storage_bucket": "swimac-4793e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:661660879690:android:ce806ebfe2d51727830fb3",
+        "android_client_info": {
+          "package_name": "com.example.swim"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjee7onXgXhbw4aMZxall1M5GXqR-g2PU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:661660879690:android:ba8d9d71c44acdbd830fb3",
+        "android_client_info": {
+          "package_name": "com.example.swimaca"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjee7onXgXhbw4aMZxall1M5GXqR-g2PU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
