@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'Avtoriz.dart'; // Импортируй экран авторизации
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -62,23 +63,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // Получаем ID пользователя
       final userId = userCredential.user?.uid;
 
-      // Сохраняем данные в Realtime Database
-      await _database.child('users/$userId').set({
-        'firstName': firstName,
-        'lastName': lastName,
-        'email': email,
-        'birthDate': birthDate,
-        'createdAt': DateTime.now().toIso8601String(),
-      });
+      if (userId != null) {
+        // Сохраняем данные в Realtime Database
+        await _database.child('users').child(userId).set({
+          'firstName': firstName,
+          'lastName': lastName,
+          'email': email,
+          'birthDate': birthDate,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
 
-      setState(() => isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Регистрация успешна!")),
+        );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Регистрация успешна!")),
-      );
-
-      Navigator.pop(context); // Вернуться на экран входа
-
+        // Переход на экран авторизации (AvtorizScreen)
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const AvtorizScreen()),
+        );
+      } else {
+        throw Exception("Ошибка: Не удалось получить ID пользователя.");
+      }
     } on FirebaseAuthException catch (e) {
       setState(() => isLoading = false);
       String errorMessage = "Ошибка регистрации";
@@ -99,6 +105,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Произошла ошибка: $e")),
       );
+    } finally {
+      setState(() => isLoading = false);
     }
   }
 

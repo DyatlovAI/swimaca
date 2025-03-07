@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:swimaca/Screen/Register.dart';
 import 'package:swimaca/Screen/HomePage.dart';
-import 'package:flutter/gestures.dart';
+
 class AvtorizScreen extends StatefulWidget {
   const AvtorizScreen({super.key});
 
@@ -15,6 +18,9 @@ class _AvtorizScreenState extends State<AvtorizScreen> {
 
   bool isLoading = false;
 
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final DatabaseReference _database = FirebaseDatabase.instance.ref();
+
   @override
   void dispose() {
     emailController.dispose();
@@ -26,34 +32,71 @@ class _AvtorizScreenState extends State<AvtorizScreen> {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) return;
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Пожалуйста, заполните все поля.")),
+      );
+      return;
+    }
 
     setState(() => isLoading = true);
 
-    // Ваша логика авторизации по email и паролю
-    final success = await _loginWithEmail(email, password);
+    try {
+      // Авторизация через Firebase Auth
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-    setState(() => isLoading = false);
+      final user = userCredential.user;
+      if (user != null) {
+        // Получаем данные пользователя из Realtime Database
+        final userData = await _getUserData(user.uid);
+        if (userData != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Успешная авторизация!")),
+          );
 
-    if (success) {
+          // Переход на HomePage с передачей данных
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => HomePage(userData: userData)),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Данные пользователя не найдены.")),
+          );
+        }
+      }
+    } on FirebaseAuthException catch (e) {
+      String errorMessage = "Ошибка авторизации.";
+      if (e.code == 'user-not-found') {
+        errorMessage = "Пользователь с таким email не найден.";
+      } else if (e.code == 'wrong-password') {
+        errorMessage = "Неверный пароль.";
+      } else if (e.code == 'invalid-email') {
+        errorMessage = "Некорректный email.";
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Успешная авторизация!")),
+        SnackBar(content: Text(errorMessage)),
       );
-      // Переход на HomePage
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomePage()),
-      );
-    } else {
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Ошибка авторизации. Проверьте данные.")),
+        SnackBar(content: Text("Произошла ошибка: $e")),
       );
+    } finally {
+      setState(() => isLoading = false);
     }
   }
 
-  Future<bool> _loginWithEmail(String email, String password) async {
-    await Future.delayed(const Duration(seconds: 2));
-    return email == "123" && password == "123";
+  // Получаем данные пользователя из Realtime Database
+  Future<Map<String, dynamic>?> _getUserData(String userId) async {
+    final snapshot = await _database.child('users/$userId').get();
+    if (snapshot.exists) {
+      return Map<String, dynamic>.from(snapshot.value as Map);
+    }
+    return null;
   }
 
   @override
@@ -103,12 +146,12 @@ class _AvtorizScreenState extends State<AvtorizScreen> {
                     ),
                     child: isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text("Войти",
+                        : const Text(
+                      "Войти",
                       style: TextStyle(
                         fontSize: 18,
                         color: Colors.white,
                       ),
-
                     ),
                   ),
                 ),
