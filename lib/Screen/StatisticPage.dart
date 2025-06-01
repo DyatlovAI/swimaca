@@ -67,7 +67,7 @@ class _StatisticPageState extends State<StatisticPage> {
     _loadUserTasks();
   }
 
-  // Загружаем активные задачи по userId из Firebase
+  // Загружаем активные задачи по userId из Firebase с подробностями из achievements
   Future<void> _loadUserTasks() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -76,13 +76,33 @@ class _StatisticPageState extends State<StatisticPage> {
         return;
       }
 
-      final snapshot = await _userAchievements.child(user.uid).get();
-      if (snapshot.exists) {
-        final data = Map<String, dynamic>.from(snapshot.value as Map);
-        setState(() {
-          userTasks = data.values.map((task) => Map<String, dynamic>.from(task)).toList();
-        });
-      }
+      final userAchievementsSnapshot = await FirebaseDatabase.instance.ref('user_achievements/${user.uid}').get();
+      final Map<String, dynamic> userAchievements = userAchievementsSnapshot.exists
+          ? Map<String, dynamic>.from(userAchievementsSnapshot.value as Map)
+          : {};
+
+      final allTasksSnapshot = await FirebaseDatabase.instance.ref('zadaniya').get();
+      final Map<String, dynamic> allTasks = allTasksSnapshot.exists
+          ? Map<String, dynamic>.from(allTasksSnapshot.value as Map)
+          : {};
+
+      final Set<String> userTitles = userAchievements.values
+          .map((e) => (e as Map)['title']?.toString() ?? '')
+          .toSet();
+
+      final List<Map<String, dynamic>> filtered = allTasks.values
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .where((task) => userTitles.contains(task['title']?.toString() ?? ''))
+          .map((task) => {
+                'title': task['title'] ?? 'Без названия',
+                'startDate': task['startDate'] ?? '',
+                'endDate': task['endDate'] ?? '',
+              })
+          .toList();
+
+      setState(() {
+        userTasks = filtered;
+      });
     } catch (e) {
       debugPrint('Ошибка загрузки задач: $e');
     }
@@ -93,10 +113,16 @@ class _StatisticPageState extends State<StatisticPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Профиль'),
+        title: const Text(
+          'Профиль',
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.blue,
         elevation: 0,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+        ),
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -121,16 +147,20 @@ class _StatisticPageState extends State<StatisticPage> {
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.white,
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
-        selectedItemColor: Colors.blue,
+        selectedItemColor: Colors.black,
         unselectedItemColor: Colors.grey,
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Feed'),
-          BottomNavigationBarItem(icon: Icon(Icons.sports), label: 'Coach'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'You'),
-          BottomNavigationBarItem(icon: Icon(Icons.flag), label: 'Challenges'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_bag), label: 'Shop'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Лента'),
+          BottomNavigationBarItem(icon: Icon(Icons.sports), label: 'Тренер'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
+          BottomNavigationBarItem(icon: Icon(Icons.flag), label: 'Задания'),
+          BottomNavigationBarItem(icon: Icon(Icons.shopping_bag), label: 'Магазин'),
         ],
       ),
       backgroundColor: Colors.white,
@@ -154,30 +184,40 @@ class _StatisticPageState extends State<StatisticPage> {
           ),
         ),
         const SizedBox(width: 16),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              fullName,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            Text(location),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                fullName,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              GestureDetector(
+                onTap: () => _showCityDialog(location),
+                child: Text(
+                  'Город: $location',
+                  style: const TextStyle(fontSize: 16, decoration: TextDecoration.underline),
+                ),
+              ),
+            ],
+          ),
         ),
-        const Spacer(),
+        const SizedBox(width: 8),
         IconButton(
           icon: const Icon(Icons.exit_to_app),
-          onPressed: () {
-            Navigator.push(
+          onPressed: () async {
+            await FirebaseAuth.instance.signOut();
+            Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (context) => const AvtorizScreen()),
-            );          },
+              (route) => false,
+            );
+          },
         ),
       ],
     );
   }
 
-  /// Получает инициалы из имени и фамилии (например, "Анастасия Чекина" → "АЧ")
   String _getInitials(String firstName, String lastName) {
     String initials = '';
     if (firstName.isNotEmpty) initials += firstName[0];
@@ -204,60 +244,79 @@ class _StatisticPageState extends State<StatisticPage> {
         final int userTasksCount = snapshot.data![0]; // Количество задач пользователя
         final int totalTasksCount = snapshot.data![1]; // Общее количество задач
 
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
-                spreadRadius: 2,
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              const Text('Активность', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('$userTasksCount / $totalTasksCount',
-                      style: const TextStyle(fontSize: 18)),
-                ],
-              ),
-            ],
+        return SizedBox(
+          width: double.infinity,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Активность', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text(
+                  'Вы присоединились к $userTasksCount из $totalTasksCount заданий',
+                  style: const TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  value: totalTasksCount > 0 ? userTasksCount / totalTasksCount : 0,
+                  backgroundColor: Colors.grey[300],
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                  minHeight: 8,
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-// Метод для загрузки количества задач
+  // Метод для загрузки количества задач
   Future<List<int>> _loadTaskCounts(Map<String, dynamic> userData) async {
-    final String userId = userData['userId'] ?? ''; // UID пользователя из Firebase Auth
-
     try {
-      // Получаем все достижения
-      final achievementsSnapshot = await FirebaseDatabase.instance.ref('achievements').get();
-      final int totalTasksCount = achievementsSnapshot.exists
-          ? (achievementsSnapshot.value as Map).length
-          : 0;
+      final String userId = FirebaseAuth.instance.currentUser!.uid;
 
-      // Получаем достижения, к которым присоединился пользователь
-      final userAchievementsSnapshot = await FirebaseDatabase.instance
-          .ref('user_achievements/$userId')
-          .get();
-      final int userTasksCount = userAchievementsSnapshot.exists
-          ? (userAchievementsSnapshot.value as Map).length
-          : 0;
+      // Получаем все задания
+      final tasksSnapshot = await FirebaseDatabase.instance.ref('zadaniya').get();
+      final Map<String, dynamic> allTasks = tasksSnapshot.exists
+          ? Map<String, dynamic>.from(tasksSnapshot.value as Map)
+          : {};
 
-      return [userTasksCount, totalTasksCount];
+      // Собираем список всех названий заданий
+      final Set<String> taskTitles = allTasks.values
+          .map((e) => (e as Map)['title']?.toString() ?? '')
+          .toSet();
+
+      // Получаем user_achievements по uid
+      final userAchievementsSnapshot =
+          await FirebaseDatabase.instance.ref('user_achievements/$userId').get();
+
+      final Map<String, dynamic> userAchievements = userAchievementsSnapshot.exists
+          ? Map<String, dynamic>.from(userAchievementsSnapshot.value as Map)
+          : {};
+
+      // Считаем только те user_achievements, у которых title совпадает с title в zadaniya
+      final int joinedCount = userAchievements.values
+          .where((entry) =>
+              taskTitles.contains((entry as Map)['title']?.toString() ?? ''))
+          .length;
+
+      return [joinedCount, taskTitles.length];
     } catch (e) {
       debugPrint('Ошибка загрузки данных: $e');
-      return [0, 0]; // В случае ошибки возвращаем 0/0
+      return [0, 0];
     }
   }
 
@@ -269,50 +328,125 @@ class _StatisticPageState extends State<StatisticPage> {
         crossAxisCount: 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 0.75,
+        childAspectRatio: 0.65,
       ),
       itemCount: userTasks.length,
       itemBuilder: (context, index) {
         final task = userTasks[index];
-        return _buildTaskCard(task['title'], task['date']);
+        return _buildTaskCard(
+          task['title']?.toString() ?? 'Без названия',
+          task['startDate']?.toString() ?? '',
+          task['endDate']?.toString() ?? '',
+        );
       },
     );
   }
 
-  Widget _buildTaskCard(String title, String date) {
+  Widget _buildTaskCard(String title, String startDate, String endDate) {
     return Container(
-      padding: const EdgeInsets.all(16),
+
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.indigo,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            spreadRadius: 2,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.description,
-            color: Colors.white,
-            size: 80,
+          SizedBox(
+            height: 200,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                'assets/images/olimp.png',
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             title,
             style: const TextStyle(
-              color: Colors.white,
               fontWeight: FontWeight.bold,
               fontSize: 14,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            date,
+            'Начало: ${_formatDate(startDate)}',
             style: const TextStyle(
-              color: Colors.white70,
               fontSize: 12,
+              color: Colors.grey,
+            ),
+          ),
+          Text(
+            'Конец: ${_formatDate(endDate)}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
             ),
           ),
         ],
       ),
+    );
+  }
+
+  String _formatDate(String rawDate) {
+    try {
+      final date = DateTime.parse(rawDate);
+      return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    } catch (e) {
+      return rawDate;
+    }
+  }
+  void _showCityDialog(String currentCity) {
+    final List<String> cities = [
+      'Москва',
+      'Санкт-Петербург',
+      'Новосибирск',
+      'Екатеринбург',
+      'Казань'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Выберите город'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: cities.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  title: Text(cities[index]),
+                  onTap: () async {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await FirebaseDatabase.instance
+                          .ref('users/${user.uid}/location')
+                          .set(cities[index]);
+                      setState(() {
+                        widget.userData['location'] = cities[index];
+                      });
+                      Navigator.pop(context);
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

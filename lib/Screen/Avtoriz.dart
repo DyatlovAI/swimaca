@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:swimaca/Screen/Register.dart';
 import 'package:swimaca/Screen/HomePage.dart';
-
+import 'package:swimaca/AdminScreen/AdminHome.dart';
 class AvtorizScreen extends StatefulWidget {
   const AvtorizScreen({super.key});
 
@@ -39,10 +39,18 @@ class _AvtorizScreenState extends State<AvtorizScreen> {
       return;
     }
 
+    // 👇 Проверка на admin
+    if (email == 'admin' && password == '12345678') {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const AdminHome()),
+      );
+      return;
+    }
+
     setState(() => isLoading = true);
 
     try {
-      // Авторизация через Firebase Auth
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
@@ -50,14 +58,11 @@ class _AvtorizScreenState extends State<AvtorizScreen> {
 
       final user = userCredential.user;
       if (user != null) {
-        // Получаем данные пользователя из Realtime Database
         final userData = await _getUserData(user.uid);
         if (userData != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Успешная авторизация!")),
           );
-
-          // Переход на HomePage с передачей данных
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => HomePage(userData: userData)),

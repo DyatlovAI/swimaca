@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:swimaca/Screen/JournalPage.dart';
 import 'package:swimaca/Screen/StatisticPage.dart';
 import 'package:swimaca/Screen/AchivementsPage.dart';
 import 'package:swimaca/Screen/ShopPage.dart';
 import 'package:swimaca/Screen/HomePage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
   class ShopPage extends StatefulWidget {
   final Map<String, dynamic> userData;
 
@@ -55,52 +58,115 @@ import 'package:swimaca/Screen/HomePage.dart';
     }
   }
 
+  Future<List<Product>> fetchProducts() async {
+    final ref = FirebaseDatabase.instance.ref('shop');
+    final snapshot = await ref.get();
 
+    if (snapshot.exists) {
+      final products = <Product>[];
+      final data = Map<String, dynamic>.from(snapshot.value as Map);
+      data.forEach((key, value) {
+        final item = Map<String, dynamic>.from(value);
+        products.add(Product(
+          name: item['name'],
+          image: item['image'],
+          price: item['price'],
+          oldPrice: item['oldPrice'],
+          rating: item['rating'],
+          reviews: item['reviews'],
+          url: item['url'],
+        ));
+      });
+      print('Fetched ${products.length} products from Realtime Database');
+      return products;
+    } else {
+      print('No data in Realtime DB at path /shop');
+      return [];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Магазин'),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.6,
-                ),
-                itemCount: products.length,
-                itemBuilder: (context, index) {
-                  return _buildProductCard(products[index]);
-                },
-              ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(kToolbarHeight),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.blue,
+            borderRadius: BorderRadius.vertical(
+              bottom: Radius.circular(20),
             ),
-          ],
+          ),
+          child: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            title: const Text(
+              'Магазин',
+              style: TextStyle(color: Colors.white),
+            ),
+            centerTitle: true,
+            automaticallyImplyLeading: false,
+          ),
         ),
       ),
+      body: FutureBuilder<List<Product>>(
+        future: fetchProducts(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            print('Snapshot error: ${snapshot.error}');
+            return Center(child: Text('Ошибка загрузки'));
+          } else {
+            final products = snapshot.data!;
+            return SingleChildScrollView(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 0.6,
+                      ),
+                      itemCount: products.length,
+                      itemBuilder: (context, index) {
+                        return _buildProductCard(products[index]);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+        },
+      ),
+      backgroundColor: Colors.white,
       bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.white,
         currentIndex: _currentIndex,
         onTap: _onTabTapped,
-        selectedItemColor: Colors.blue,
+        selectedItemColor: Colors.black,
         unselectedItemColor: Colors.grey,
+        selectedLabelStyle: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+        ),
+        unselectedLabelStyle: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 14,
+        ),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Feed'),
-          BottomNavigationBarItem(icon: Icon(Icons.sports), label: 'Coach'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'You'),
-          BottomNavigationBarItem(icon: Icon(Icons.flag), label: 'Challenges'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_bag), label: 'Shop'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Лента'),
+          BottomNavigationBarItem(icon: Icon(Icons.sports), label: 'Тренер'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Профиль'),
+          BottomNavigationBarItem(icon: Icon(Icons.flag), label: 'Задания'),
+          BottomNavigationBarItem(icon: Icon(Icons.shopping_bag), label: 'Магазин'),
         ],
       ),
     );
@@ -110,6 +176,7 @@ import 'package:swimaca/Screen/HomePage.dart';
     return GestureDetector(
       onTap: () => _launchURL(product.url), // Переход на магазин
       child: Card(
+        color: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,8 +184,8 @@ import 'package:swimaca/Screen/HomePage.dart';
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: Image.asset(
-                  product.image, // Загружаем локальное изображение
+                child: Image.network(
+                  product.image,
                   fit: BoxFit.cover,
                   width: double.infinity,
                 ),
@@ -135,16 +202,21 @@ import 'package:swimaca/Screen/HomePage.dart';
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
-                  Text('${product.price} руб',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red,
-                      )),
                   Text(
                     '${product.oldPrice} руб',
                     style: const TextStyle(
                       decoration: TextDecoration.lineThrough,
                       color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${product.price} руб',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                      fontSize: 14,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -176,7 +248,7 @@ class Product {
   final int oldPrice;
   final int rating;
   final int reviews;
-  final String url; // Ссылка на магазин
+  final String url;
 
   Product({
     required this.name,
@@ -197,33 +269,3 @@ Future<void> _launchURL(String url) async {
     throw 'Не удалось открыть ссылку: $url';
   }
 }
-
-final List<Product> products = [
-  Product(
-    name: 'Гидрокостюм Arena',
-    image: 'assets/images/i4.jpg',
-    price: 389,
-    oldPrice: 1299,
-    rating: 4,
-    reviews: 21,
-    url: 'https://www.proswim.ru/product/arena-gidrokostyum-carbon-air-fbslob-4984/',
-  ),
-  Product(
-    name: 'Доска для плавания',
-    image: 'assets/images/i5r.jpg',
-    price: 10999,
-    oldPrice: 13999,
-    rating: 5,
-    reviews: 15,
-    url: 'https://www.proswim.ru/product/arena-doska-dlya-plavaniya-pull-kick-2181/',
-  ),
-  Product(
-    name: 'Очки для плавания',
-    image: 'assets/images/i6.jpg',
-    price: 1599,
-    oldPrice: 3199,
-    rating: 4,
-    reviews: 30,
-    url: 'https://www.proswim.ru/product/ochki-dlya-plavaniya-s-dioptriyami-yingfa-optical-goggle-11429/',
-  ),
-];

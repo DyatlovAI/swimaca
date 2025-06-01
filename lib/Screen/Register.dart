@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'Avtoriz.dart'; // Импортируй экран авторизации
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -165,11 +166,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 20),
                   TextField(
                     controller: birthDateController,
-                    keyboardType: TextInputType.datetime,
+                    readOnly: true,
                     decoration: const InputDecoration(
-                      labelText: "Дата рождения (например, 09.09.2000)",
+                      labelText: "Дата рождения",
                       border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today),
                     ),
+                    onTap: () async {
+                      DateTime? pickedDate = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime(2005, 1),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                        locale: const Locale("ru", "RU"),
+                        builder: (context, child) {
+                          return Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.light(
+                                primary: Colors.blueAccent,
+                                onPrimary: Colors.white,
+                                onSurface: Colors.black,
+                              ),
+                              textButtonTheme: TextButtonThemeData(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.blueAccent,
+                                ),
+                              ),
+                            ),
+                            child: child!,
+                          );
+                        },
+                      );
+
+                      if (pickedDate != null) {
+                        setState(() {
+                          birthDateController.text =
+                              "${pickedDate.day.toString().padLeft(2, '0')}.${pickedDate.month.toString().padLeft(2, '0')}.${pickedDate.year}";
+                        });
+                      }
+                    },
                   ),
                   const SizedBox(height: 40),
                   SizedBox(
