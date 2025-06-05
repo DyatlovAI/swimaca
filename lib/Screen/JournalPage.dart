@@ -68,7 +68,7 @@ class _JournalPageState extends State<JournalPage> {
     _loadUsers();
   }
 
-  // Загружаем всех пользователей, кроме текущего
+  // Загружаем всех пользователей, кроме текущего, и считаем рейтинг по достижениям
   Future<void> _loadUsers() async {
     try {
       final user = _auth.currentUser;
@@ -87,10 +87,42 @@ class _JournalPageState extends State<JournalPage> {
             'uid': entry.key,
             'firstName': userData['firstName'] ?? 'Без имени',
             'lastName': userData['lastName'] ?? 'Без фамилии',
-          'birthday': userData['birthDate'] ?? 'Не указано',
+            'birthday': userData['birthDate'] ?? 'Не указано',
             'email': userData['email'] ?? 'Нет email',
           };
         }).toList();
+
+        // Загружаем задания и считаем рейтинг по реальному участию в zadaniya -> categoriesData
+        final zadaniyaSnapshot = await FirebaseDatabase.instance.ref('zadaniya').get();
+        final Map<String, dynamic> zadaniyaData = zadaniyaSnapshot.exists
+            ? Map<String, dynamic>.from(zadaniyaSnapshot.value as Map)
+            : {};
+
+        for (var user in loadedUsers) {
+          final userId = user['uid'];
+          int rating = 0;
+
+          for (var zadanie in zadaniyaData.values) {
+            final map = Map<String, dynamic>.from(zadanie as Map);
+            final categoriesData = map['categoriesData'];
+            if (categoriesData is Map) {
+              for (var cat in categoriesData.values) {
+                if (cat is List) {
+                  for (var slot in cat) {
+                    if (slot is Map && slot['userId'] == userId) {
+                      rating++;
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          user['rating'] = rating;
+        }
+
+        // Сортировка по рейтингу по убыванию
+        loadedUsers.sort((a, b) => (b['rating'] as int).compareTo(a['rating'] as int));
 
         setState(() {
           users = loadedUsers;
@@ -215,8 +247,7 @@ class _JournalPageState extends State<JournalPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('День рождения: ${user['birthday']}'),
-
-
+                                Text('Рейтинг: ${user['rating']}'),
                               ],
                             ),
                           );

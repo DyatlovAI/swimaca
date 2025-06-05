@@ -67,38 +67,38 @@ class _StatisticPageState extends State<StatisticPage> {
     _loadUserTasks();
   }
 
-  // Загружаем активные задачи по userId из Firebase с подробностями из achievements
+  // Загружаем активные задачи по userId из categoriesData каждой категории
   Future<void> _loadUserTasks() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        debugPrint('Пользователь не авторизован');
-        return;
-      }
-
-      final userAchievementsSnapshot = await FirebaseDatabase.instance.ref('user_achievements/${user.uid}').get();
-      final Map<String, dynamic> userAchievements = userAchievementsSnapshot.exists
-          ? Map<String, dynamic>.from(userAchievementsSnapshot.value as Map)
-          : {};
-
+      final String userId = FirebaseAuth.instance.currentUser!.uid;
       final allTasksSnapshot = await FirebaseDatabase.instance.ref('zadaniya').get();
       final Map<String, dynamic> allTasks = allTasksSnapshot.exists
           ? Map<String, dynamic>.from(allTasksSnapshot.value as Map)
           : {};
 
-      final Set<String> userTitles = userAchievements.values
-          .map((e) => (e as Map)['title']?.toString() ?? '')
-          .toSet();
+      final List<Map<String, dynamic>> filtered = [];
 
-      final List<Map<String, dynamic>> filtered = allTasks.values
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .where((task) => userTitles.contains(task['title']?.toString() ?? ''))
-          .map((task) => {
-                'title': task['title'] ?? 'Без названия',
-                'startDate': task['startDate'] ?? '',
-                'endDate': task['endDate'] ?? '',
-              })
-          .toList();
+      allTasks.forEach((taskId, taskData) {
+        final taskMap = Map<String, dynamic>.from(taskData);
+        final DateTime? taskStartDate = DateTime.tryParse(taskMap['startDate'] ?? '');
+        if (taskStartDate == null || taskStartDate.isBefore(DateTime.now())) return;
+        final categoriesData = Map<String, dynamic>.from(taskMap['categoriesData'] ?? {});
+        for (var category in categoriesData.values) {
+          final List<dynamic> list = category as List<dynamic>;
+          for (var item in list) {
+            if (item is Map && item['userId'] == userId) {
+              filtered.add({
+                'title': taskMap['title'] ?? 'Без названия',
+                'startDate': taskMap['startDate'] ?? '',
+                'endDate': taskMap['endDate'] ?? '',
+              });
+              break;
+            }
+          }
+        }
+      });
+
+      debugPrint('Вы присоединились к ${filtered.length} задачам');
 
       setState(() {
         userTasks = filtered;
@@ -171,7 +171,6 @@ class _StatisticPageState extends State<StatisticPage> {
   Widget _buildProfileHeader() {
     final String fullName = '${widget.userData['firstName']} ${widget.userData['lastName']}';
     final String initials = _getInitials(widget.userData['firstName'], widget.userData['lastName']);
-    final String location = widget.userData['location'] ?? 'Город не указан';
 
     return Row(
       children: [
@@ -191,13 +190,6 @@ class _StatisticPageState extends State<StatisticPage> {
               Text(
                 fullName,
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              GestureDetector(
-                onTap: () => _showCityDialog(location),
-                child: Text(
-                  'Город: $location',
-                  style: const TextStyle(fontSize: 16, decoration: TextDecoration.underline),
-                ),
               ),
             ],
           ),
@@ -308,10 +300,30 @@ class _StatisticPageState extends State<StatisticPage> {
           : {};
 
       // Считаем только те user_achievements, у которых title совпадает с title в zadaniya
-      final int joinedCount = userAchievements.values
+      int joinedCount = userAchievements.values
           .where((entry) =>
               taskTitles.contains((entry as Map)['title']?.toString() ?? ''))
           .length;
+
+      // Также учитываем задачи, где userId найден в categoriesData аналогично фильтрации userTasks
+      for (var taskData in allTasks.values) {
+        final taskMap = Map<String, dynamic>.from(taskData);
+        final categoriesData = Map<String, dynamic>.from(taskMap['categoriesData'] ?? {});
+        bool userFound = false;
+        for (var category in categoriesData.values) {
+          final List<dynamic> list = category as List<dynamic>;
+          for (var item in list) {
+            if (item is Map && item['userId'] == userId) {
+              userFound = true;
+              break;
+            }
+          }
+          if (userFound) break;
+        }
+        if (userFound) {
+          joinedCount++;
+        }
+      }
 
       return [joinedCount, taskTitles.length];
     } catch (e) {
@@ -388,7 +400,7 @@ class _StatisticPageState extends State<StatisticPage> {
             ),
           ),
           Text(
-            'Конец: ${_formatDate(endDate)}',
+            'Время: ${_formatTime(startDate)}',
             style: const TextStyle(
               fontSize: 12,
               color: Colors.grey,
@@ -407,46 +419,12 @@ class _StatisticPageState extends State<StatisticPage> {
       return rawDate;
     }
   }
-  void _showCityDialog(String currentCity) {
-    final List<String> cities = [
-      'Москва',
-      'Санкт-Петербург',
-      'Новосибирск',
-      'Екатеринбург',
-      'Казань'
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Выберите город'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: cities.length,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  title: Text(cities[index]),
-                  onTap: () async {
-                    final user = FirebaseAuth.instance.currentUser;
-                    if (user != null) {
-                      await FirebaseDatabase.instance
-                          .ref('users/${user.uid}/location')
-                          .set(cities[index]);
-                      setState(() {
-                        widget.userData['location'] = cities[index];
-                      });
-                      Navigator.pop(context);
-                    }
-                  },
-                );
-              },
-            ),
-          ),
-        );
-      },
-    );
+  String _formatTime(String rawDate) {
+    try {
+      final date = DateTime.parse(rawDate);
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return '';
+    }
   }
 }

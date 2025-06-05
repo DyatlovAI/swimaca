@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:swimaca/Screen/JournalPage.dart';
@@ -6,6 +7,9 @@ import 'package:swimaca/Screen/StatisticPage.dart';
 import 'package:swimaca/Screen/AchivementsPage.dart';
 import 'package:swimaca/Screen/ShopPage.dart';
 import 'package:swimaca/Screen/HomePage.dart';
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
 class AchievementsPage extends StatefulWidget {
   final Map<String, dynamic> userData; // Данные пользователя
@@ -79,14 +83,57 @@ class _AchievementsPageState extends State<AchievementsPage> {
           await _loadUserAchievements(user.uid); // Загружаем достижения пользователя
         }
 
+        // Определяем userId заранее
+        final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+        final now = DateTime.now();
+
+        final filtered = data.entries
+            .map((entry) => {
+                  // Ensure each achievement has a valid 'id' field, derived from the key if missing
+                  'id': entry.key,
+                  ...Map<String, dynamic>.from(entry.value as Map)
+                })
+            .where((achievement) {
+              debugPrint('Проверка достижения: ${achievement['title']}');
+              debugPrint('ID достижения: ${achievement['id']}');
+              debugPrint('Присоединен ли пользователь: ${joinedAchievements.contains(achievement['id'])}');
+              final startDateStr = achievement['startDate'];
+              if (startDateStr != null && startDateStr.toString().isNotEmpty) {
+                try {
+                  final startDate = DateTime.parse(startDateStr);
+                  if (startDate.isBefore(now)) return false;
+                } catch (_) {
+                  return false;
+                }
+              }
+
+              // Исключаем достижения, к которым пользователь уже присоединился по userId
+              if (joinedAchievements.contains(achievement['id'])) {
+                return false;
+              }
+
+              final categoriesData = achievement['categoriesData'];
+              if (categoriesData is Map) {
+                for (final category in categoriesData.values) {
+                  if (category is List) {
+                    for (final slot in category) {
+                      if (slot is Map && slot['userId'] == userId) {
+                        debugPrint('Пропуск достижения ${achievement['id']} — пользователь уже присоединился');
+                        return false;
+                      }
+                    }
+                  }
+                }
+              }
+
+              return true;
+            })
+            .toList();
+
+        debugPrint('Финальный список достижений (${filtered.length}):');
+        filtered.forEach((a) => debugPrint(' - ${a['title']}'));
         setState(() {
-          achievements = data.entries
-              .map((entry) => {
-            'id': entry.key,
-            ...Map<String, dynamic>.from(entry.value as Map)
-          })
-              .where((achievement) => !joinedAchievements.contains(achievement['title']))
-              .toList();
+          achievements = filtered;
         });
       }
     } catch (e) {
@@ -101,7 +148,9 @@ class _AchievementsPageState extends State<AchievementsPage> {
       if (snapshot.exists) {
         final data = Map<String, dynamic>.from(snapshot.value as Map);
         joinedAchievements = data.values
-            .map<String>((entry) => entry['title'] as String)
+            .whereType<Map>()
+            .map<String>((entry) => entry['id'] as String? ?? '')
+            .where((id) => id.isNotEmpty)
             .toSet();
       }
     } catch (e) {
@@ -109,38 +158,285 @@ class _AchievementsPageState extends State<AchievementsPage> {
     }
   }
 
+  Future<void> _showPhoneInputDialog(Map<String, dynamic> achievement) async {
+    debugPrint('Показ диалога ввода телефона');
+    final TextEditingController phoneController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
+    final maskFormatter = MaskTextInputFormatter(
+      mask: '+7 (###) ###-##-##',
+      filter: { "#": RegExp(r'[0-9]') },
+      initialText: '',
+    );
 
-  // Присоединение к достижению
-  Future<void> _joinAchievement(Map<String, dynamic> achievement) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text(
+          'Введите номер телефона',
+          style: TextStyle(color: Colors.blue),
+        ),
+        content: Form(
+          key: formKey,
+          child: TextField(
+            controller: phoneController,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [maskFormatter],
+            decoration: const InputDecoration(
+              hintText: '+7 (___) ___-__-__',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(null);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.blue,
+            ),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = phoneController.text.trim();
+              final regExp = RegExp(r'^\+7 \(\d{3}\) \d{3}-\d{2}-\d{2}$');
+              if (text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Пожалуйста, введите номер телефона')),
+                );
+                return;
+              }
+              if (!regExp.hasMatch(text)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Введите корректный номер телефона')),
+                );
+                return;
+              }
+              Navigator.of(context).pop(text);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Подтвердить'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      debugPrint('Введён номер телефона: $result');
+      await _joinAchievementWithPhone(achievement, result);
+    } else {
+      debugPrint('Ввод номера телефона отменён');
+    }
+  }
+
+  // Присоединение к достижению с номером телефона
+  Future<void> _joinAchievementWithPhone(Map<String, dynamic> achievement, String phone) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw 'Пользователь не авторизован';
+      if (user == null) {
+        debugPrint('Ошибка: FirebaseAuth.instance.currentUser == null');
+        throw 'Пользователь не авторизован';
+      }
+
+      // Логируем наличие и значения title и категории
+      debugPrint('achievement[\'title\']: ${achievement['title']}');
+      // debugPrint('achievement[\'category\']: ${achievement['category']}');
 
       final uid = user.uid;
+
+      // --- Получение даты рождения пользователя из базы данных ---
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      String? birthdateStr;
+
+      if (userId != null) {
+        final userSnapshot = await FirebaseDatabase.instance.ref('users/$userId').get();
+        if (userSnapshot.exists) {
+          final userMap = Map<String, dynamic>.from(userSnapshot.value as Map);
+          birthdateStr = userMap['birthDate'];
+        }
+      }
+
+      debugPrint('Дата рождения пользователя: $birthdateStr');
+      int? age;
+      if (birthdateStr != null) {
+        try {
+          final birthDate = DateFormat('dd.MM.yyyy').parse(birthdateStr);
+          final now = DateTime.now();
+          age = now.year - birthDate.year;
+          if (now.month < birthDate.month || (now.month == birthDate.month && now.day < birthDate.day)) {
+            age--;
+          }
+          debugPrint('Рассчитанный возраст: $age');
+          if (age != null) {
+            debugPrint('Пользователю $age лет');
+          }
+        } catch (e) {
+          debugPrint('Ошибка парсинга даты рождения: $e');
+        }
+      }
+      // --- Конец вычисления возраста ---
+
+      // Проверяем наличие категорий у достижения
+      final categories = achievement['categories'];
+      String? category;
+
+      if (categories == null) {
+        debugPrint('achievement["categories"] == null');
+      } else if (categories is! List) {
+        debugPrint('achievement["categories"] не является списком');
+      } else if (categories.isEmpty) {
+        debugPrint('achievement["categories"] пустой список');
+      }
+      // Проверка наличия и валидности categories перед определением категории
+      if (categories == null || !(categories is List) || categories.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Для этого достижения не указаны категории')),
+          );
+        }
+        debugPrint('Ошибка: achievement["categories"] отсутствует или пусто');
+        return;
+      }
+
+      if (categories is List && categories.isNotEmpty) {
+        category = categories.firstWhere(
+          (c) {
+            if (age == null) return false;
+            if (c == '7-9') return age >= 7 && age <= 9;
+            if (c == '9-13') return age >= 9 && age <= 13;
+            if (c == '13-18') return age >= 13 && age <= 18;
+            if (c == '18-25') return age >= 18 && age <= 25;
+            if (c == '25+') return age > 25;
+            return false;
+          },
+          orElse: () => null,
+        );
+        category ??= categories.first;
+      }
+      final title = achievement['title'] ?? '';
+      if (title == '') {
+        debugPrint('Ошибка: achievement[\'title\'] отсутствует или пустой');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Ошибка: не найдено название достижения')),
+          );
+        }
+        return;
+      }
+
+      // Получаем все заявки пользователя и фильтруем вручную по title и category
+      final snapshot = await _userAchievements.child(uid).get();
+      int countInCategory = 0;
+      if (snapshot.exists) {
+        final data = Map<String, dynamic>.from(snapshot.value as Map);
+        countInCategory = data.values.where((entry) {
+          if (entry is Map) {
+            return (entry['title'] ?? '') == title && (entry['category'] ?? '') == category;
+          }
+          return false;
+        }).length;
+      }
+      debugPrint('Текущее количество заявок в категории "$category": $countInCategory');
+
+      if (countInCategory >= 10) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Извините, в этой категории нет свободных мест')),
+          );
+        }
+        debugPrint('Нет свободных мест в категории "$category"');
+        return;
+      }
+
       final newEntry = {
-        'title': achievement['title'] ?? '',
+        'id': achievement['id'],
+        'title': title,
         'date': achievement['date'] ?? '',
         'startDate': achievement.containsKey('startDate') ? achievement['startDate'] : '',
         'endDate': achievement.containsKey('endDate') ? achievement['endDate'] : '',
         'joinedAt': DateTime.now().toIso8601String(),
+        'phone': phone,
+        'category': category,
+        'userId': uid,
       };
 
+      debugPrint('Возраст пользователя: $age');
+      debugPrint('Выбранная категория: $category');
+      debugPrint('newEntry перед сохранением: $newEntry');
+
       await _userAchievements.child(uid).push().set(newEntry);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Вы успешно присоединились!')),
-      );
+      debugPrint('Заявка сохранена в базе данных');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Вы успешно присоединились!')),
+        );
+      }
+
+      await _sendConfirmationEmail(user.email ?? '', achievement, category ?? '');
 
       // Удаляем достижение из списка и обновляем UI
-      setState(() {
-        achievements.removeWhere((a) => a['title'] == achievement['title']);
-      });
-    } catch (e) {
+      if (mounted) {
+        setState(() {
+          achievements.removeWhere((a) => a['title'] == title);
+        });
+      }
+    } catch (e, stack) {
       debugPrint('Ошибка при присоединении к достижению: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось присоединиться')),
-      );
+      debugPrint('Stacktrace: ${stack.toString()}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось присоединиться')),
+        );
+      }
     }
+  }
+
+  Future<void> _sendConfirmationEmail(String email, Map<String, dynamic> achievement, String category) async {
+    debugPrint('Начинаем отправку подтверждающего письма');
+    final smtpServer = SmtpServer(
+      'smtp.mail.ru',
+      username: 'artem.dyatlov.2023@mail.ru',
+      password: 'lFNACmVifAtXRWOSAuJ9',
+      port: 587,
+      ssl: false,
+      ignoreBadCertificate: true,
+    );
+
+    final message = Message()
+      ..from = const Address('artem.dyatlov.2023@mail.ru', 'Swimaca')
+      ..recipients.add(email)
+      ..subject = 'Подтверждение заявки на достижение: ${achievement['title']}'
+      ..text = '''
+Здравствуйте!
+
+Вы успешно подали заявку на достижение "${achievement['title']}".
+Категория: $category.
+
+Спасибо за участие!
+
+С уважением,
+Команда Swimaca
+''';
+
+    try {
+      final sendReport = await send(message, smtpServer);
+      debugPrint('Письмо отправлено: ' + sendReport.toString());
+    } on MailerException catch (e) {
+      debugPrint('Ошибка при отправке письма: $e');
+    } catch (e) {
+      debugPrint('Неизвестная ошибка при отправке письма: $e');
+    }
+  }
+
+  // Присоединение к достижению
+  Future<void> _joinAchievement(Map<String, dynamic> achievement) async {
+    await _showPhoneInputDialog(achievement);
   }
 
   @override

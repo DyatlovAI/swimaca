@@ -7,6 +7,8 @@ import 'package:swimaca/AdminScreen/MagazinAdmin.dart';
 import 'package:swimaca/AdminScreen/AddMagazinAdmin.dart';
 import 'package:swimaca/AdminScreen/ZadaniyaAddAdmin.dart';
 import 'package:swimaca/AdminScreen/ZadaniyaAdmin.dart';
+import 'package:swimaca/AdminScreen/zayavPage.dart';
+import 'package:swimaca/AdminScreen/zayavPage.dart';
 import 'package:flutter/material.dart';
 
 class AdminHome extends StatelessWidget {
@@ -112,6 +114,21 @@ class AdminHome extends StatelessWidget {
                 );
               },
               child: Text('Задания', style: TextStyle(fontSize: 16)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ZadaniyaZayavkiPage()),
+                );
+              },
+              child: Text('Просмотр заявок', style: TextStyle(fontSize: 16)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
