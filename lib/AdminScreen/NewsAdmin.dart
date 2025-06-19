@@ -4,6 +4,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as path;
 import 'package:swimaca/AdminScreen/NewsProsmotrAdmin.dart';
+import 'package:swimaca/AdminScreen/AdminHome.dart';
 
 class NewsAdmin extends StatefulWidget {
   const NewsAdmin({super.key});
@@ -25,6 +26,8 @@ class _NewsAdminState extends State<NewsAdmin> {
   ];
   String _selectedAssetImage = 'assets/images/i.png';
 
+  bool _isSaving = false;
+
   Future<String> uploadFile(File file) async {
     print('Загрузка файла: ${file.path}');
     final fileName = path.basename(file.path);
@@ -36,11 +39,18 @@ class _NewsAdminState extends State<NewsAdmin> {
   }
 
   Future<void> _saveNews(String title, String subtitle, String imagePath, String videoUrl) async {
+    if (_isSaving) return;
+    setState(() {
+      _isSaving = true;
+    });
     print('Сохранение новости...');
     if (title.isEmpty || subtitle.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Пожалуйста, заполните заголовок и описание')),
       );
+      setState(() {
+        _isSaving = false;
+      });
       return;
     }
     print('Заголовок: $title');
@@ -65,11 +75,15 @@ class _NewsAdminState extends State<NewsAdmin> {
       videoUrlController.clear();
       setState(() {
         _selectedAssetImage = _assetImages[0];
+        _isSaving = false;
       });
     } catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Ошибка при сохранении: $error')),
       );
+      setState(() {
+        _isSaving = false;
+      });
     }
   }
 
@@ -85,7 +99,10 @@ class _NewsAdminState extends State<NewsAdmin> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const AdminHome()),
+            );
           },
         ),
         title: const Text(
@@ -164,7 +181,7 @@ class _NewsAdminState extends State<NewsAdmin> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            onPressed: () {
+            onPressed: _isSaving ? null : () {
               _saveNews(
                 titleController.text,
                 subtitleController.text,

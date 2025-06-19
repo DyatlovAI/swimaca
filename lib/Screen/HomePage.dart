@@ -205,6 +205,7 @@ class _HomePageState extends State<HomePage> {
               if (_newsList.isNotEmpty)
                 SizedBox(
                   height: 150,
+
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     itemCount: _newsList.length,
@@ -219,7 +220,7 @@ class _HomePageState extends State<HomePage> {
                           }
                         },
                         child: Container(
-                          width: 150,
+                          width: 250,
                           margin: const EdgeInsets.only(right: 12),
                           child: Stack(
                             children: [

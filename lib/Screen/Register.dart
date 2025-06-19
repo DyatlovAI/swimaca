@@ -35,24 +35,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _onRegister() async {
+    if (isLoading) return;
+    setState(() => isLoading = true);
+
     final firstName = firstNameController.text.trim();
     final lastName = lastNameController.text.trim();
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
     final birthDate = birthDateController.text.trim();
 
-    if (firstName.isEmpty ||
-        lastName.isEmpty ||
-        email.isEmpty ||
-        password.isEmpty ||
-        birthDate.isEmpty) {
+    // Пошаговые проверки каждого поля
+    if (firstName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Пожалуйста, заполните все поля.")),
+        const SnackBar(content: Text("Введите имя")),
       );
+      setState(() => isLoading = false);
       return;
     }
-
-    setState(() => isLoading = true);
+    if (lastName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Введите фамилию")),
+      );
+      setState(() => isLoading = false);
+      return;
+    }
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Введите корректный email")),
+      );
+      setState(() => isLoading = false);
+      return;
+    }
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Пароль должен содержать минимум 6 символов")),
+      );
+      setState(() => isLoading = false);
+      return;
+    }
+    if (birthDate.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Выберите дату рождения")),
+      );
+      setState(() => isLoading = false);
+      return;
+    }
 
     try {
       // Регистрация пользователя через Firebase Auth
@@ -176,8 +203,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       DateTime? pickedDate = await showDatePicker(
                         context: context,
                         initialDate: DateTime(2005, 1),
-                        firstDate: DateTime(1900),
-                        lastDate: DateTime.now(),
+                        firstDate: DateTime.now().subtract(const Duration(days: 365 * 123)),
+                        lastDate: DateTime.now().subtract(const Duration(days: 365 * 7)),
                         locale: const Locale("ru", "RU"),
                         builder: (context, child) {
                           return Theme(

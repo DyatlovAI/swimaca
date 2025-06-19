@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 
@@ -35,14 +33,92 @@ class _MagazinEditAdminState extends State<MagazinEditAdmin> {
   }
 
   void _saveChanges() {
+    // Пошаговая валидация
+    if (_imageController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Выберите изображение')),
+      );
+      return;
+    }
+    if (_nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите заголовок')),
+      );
+      return;
+    }
+    if (_priceController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите описание')),
+      );
+      return;
+    }
+    if (_oldPriceController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите старую цену')),
+      );
+      return;
+    }
+    if (_ratingController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите рейтинг')),
+      );
+      return;
+    }
+    if (_reviewsController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите количество отзывов')),
+      );
+      return;
+    }
+    final price = int.tryParse(_priceController.text);
+    if (price == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите корректную цену')),
+      );
+      return;
+    }
+    final oldPrice = int.tryParse(_oldPriceController.text);
+    if (oldPrice == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите корректную старую цену')),
+      );
+      return;
+    }
+    final rating = int.tryParse(_ratingController.text);
+    if (rating == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите корректный рейтинг')),
+      );
+      return;
+    }
+    if (rating < 1 || rating > 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Рейтинг должен быть от 1 до 5')),
+      );
+      return;
+    }
+    final reviews = int.tryParse(_reviewsController.text);
+    if (reviews == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите корректное количество отзывов')),
+      );
+      return;
+    }
+    if (_urlController.text.trim().isNotEmpty &&
+        !Uri.tryParse(_urlController.text.trim())!.isAbsolute) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите корректную ссылку на товар')),
+      );
+      return;
+    }
     final ref = FirebaseDatabase.instance.ref().child('shop/${widget.keyId}');
     ref.update({
       'name': _nameController.text,
       'image': _imageController.text,
-      'price': int.tryParse(_priceController.text) ?? 0,
-      'oldPrice': int.tryParse(_oldPriceController.text) ?? 0,
-      'rating': int.tryParse(_ratingController.text) ?? 0,
-      'reviews': int.tryParse(_reviewsController.text) ?? 0,
+      'price': price,
+      'oldPrice': oldPrice,
+      'rating': rating,
+      'reviews': reviews,
       'url': _urlController.text,
     }).then((_) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Товар обновлён')));

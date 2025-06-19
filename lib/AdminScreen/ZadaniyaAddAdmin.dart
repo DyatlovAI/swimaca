@@ -218,7 +218,24 @@ class _ZadaniyaAddAdminState extends State<ZadaniyaAddAdmin> {
 
   void _saveZadanie() {
     final title = _titleController.text.trim();
-    if (title.isEmpty || _startDateTime == null || _selectedCategories.isEmpty) return;
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите название')),
+      );
+      return;
+    }
+    if (_startDateTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Выберите дату начала')),
+      );
+      return;
+    }
+    if (_selectedCategories.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Добавьте хотя бы одну категорию')),
+      );
+      return;
+    }
 
     final newZadanieRef = _database.push();
     newZadanieRef.set({

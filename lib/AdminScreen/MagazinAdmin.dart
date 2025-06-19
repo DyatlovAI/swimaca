@@ -70,7 +70,13 @@ class _MagazinAdminState extends State<MagazinAdmin> {
                             onPressed: () async {
                               Navigator.pop(context);
                               final url = product['url'];
-                              if (url != null) {
+                              if (url == null || !(await canLaunchUrl(Uri.parse(url)))) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Невозможно перейти: некорректная ссылка'),
+                                  ),
+                                );
+                              } else {
                                 await launchUrl(Uri.parse(url));
                               }
                             },
